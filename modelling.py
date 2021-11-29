@@ -2,8 +2,8 @@ import torch
 import torch.nn.functional as F
 from torch import nn, optim
 
-class LSTMModel(nn.Module):
-    def __init__(self, input_size, hidden_size = 128, num_layers=1, v_dropout=0):
+class LSTMModel_base(nn.Module):
+    def __init__(self, input_size, hidden_size = 192, num_layers=4, v_dropout=0):
         super().__init__()
         self.lstm = nn.LSTM(
         input_size = input_size,
@@ -44,7 +44,7 @@ class LSTMModel(nn.Module):
     def forward(self, x):
         x, _ = self.lstm(x)
 
-        x = F.silu(self.fc(x))
+        x = F.selu(self.fc(x))
         x = self.out(x)
 
         return x
@@ -60,17 +60,20 @@ class L1Loss_masked(nn.Module):
 
         return mae
     
-def train_epoch(model, device, dataloader, loss_fn, optimizer):
+def train_epoch(model, device, dataloader, loss_fn, optimizer, epoch, batch_scheduler = None):
     train_loss = []
     
     model.train()
     
-    for X, target in dataloader:
+    iters = len(dataloader)
+    
+    for i, (X, target) in enumerate(dataloader):
         X, target = X.to(device), target.to(device)
 
         optimizer.zero_grad()
         output = model(X)
-        loss = loss_fn(output, target) #loss_fn(output, target, X[:,:,4].reshape(-1,80,1)) for masked
+        loss = loss_fn(output, target, X[:,:,2].reshape(-1,80,1))
+        #loss = loss_fn(output, target) 
         loss.backward()
         # Check for bad gradients
         """
@@ -83,6 +86,8 @@ def train_epoch(model, device, dataloader, loss_fn, optimizer):
             print(total_norm)
         """
         optimizer.step()
+        if batch_scheduler is not None:
+            batch_scheduler.step(epoch + i / iters)
         
         train_loss.append(loss.detach().item())
            
